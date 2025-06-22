@@ -172,6 +172,11 @@ int main(int argc, char *argv[])
             read(device_fd, data_buf, DATABUFFER_SIZE);
             draw_board(display_buf, data_buf);
             printf("%s", display_buf);
+            time_t now = time(NULL);
+            const struct tm *tm_now = localtime(&now);
+            printf("\n\nCurrent time: %04d-%02d-%02d %02d:%02d:%02d\n",
+                   tm_now->tm_year + 1900, tm_now->tm_mon + 1, tm_now->tm_mday,
+                   tm_now->tm_hour, tm_now->tm_min, tm_now->tm_sec);
         }
     }
 
