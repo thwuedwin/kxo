@@ -7,3 +7,5 @@
 *.cmd
 *.symvers
 xo-user
+data/
+tags

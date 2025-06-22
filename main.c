@@ -78,7 +78,7 @@ static int major;
 static struct class *kxo_class;
 static struct cdev kxo_cdev;
 
-static char draw_buffer[DRAWBUFFER_SIZE];
+static char draw_buffer[DATABUFFER_SIZE];
 
 /* Data are stored into a kfifo buffer before passing them to the userspace */
 static DECLARE_KFIFO_PTR(rx_fifo, unsigned char);
@@ -121,28 +121,37 @@ static char table[N_GRIDS];
 /* Draw the board into draw_buffer */
 static int draw_board(char *table)
 {
-    int i = 0, k = 0;
-    draw_buffer[i++] = '\n';
-    smp_wmb();
-    draw_buffer[i++] = '\n';
-    smp_wmb();
-
-    while (i < DRAWBUFFER_SIZE) {
-        for (int j = 0; j < (BOARD_SIZE << 1) - 1 && k < N_GRIDS; j++) {
-            draw_buffer[i++] = j & 1 ? '|' : table[k++];
-            smp_wmb();
-        }
-        draw_buffer[i++] = '\n';
-        smp_wmb();
-        for (int j = 0; j < (BOARD_SIZE << 1) - 1; j++) {
-            draw_buffer[i++] = '-';
-            smp_wmb();
-        }
-        draw_buffer[i++] = '\n';
-        smp_wmb();
+    // for BOARD_SIZE = 4
+    for (int i = 0; i < sizeof(draw_buffer); i++) {
+        draw_buffer[i] = 0;
     }
 
-
+    int shift = 0, buffer_i = 0;
+    for (int i = 0; i < N_GRIDS; i++) {
+        int pattern;
+        switch (table[i]) {
+        case ' ':
+            pattern = 0b00;
+            break;
+        case 'O':
+            pattern = 0b01;
+            break;
+        case 'X':
+            pattern = 0b10;
+            break;
+        default:
+            pattern = 0b11;
+        }
+        pattern <<= shift;
+        draw_buffer[buffer_i] |= pattern;
+        smp_wmb();
+        if (shift != 6) {
+            shift += 2;
+        } else {
+            shift = 0;
+            buffer_i++;
+        }
+    }
     return 0;
 }
 
