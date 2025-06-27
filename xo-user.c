@@ -15,6 +15,7 @@
 #define XO_DEVICE_FILE "/dev/kxo"
 #define XO_DEVICE_ATTR_FILE "/sys/class/kxo/kxo/kxo_state"
 #define TIME_DATA_FILE "./data/time_data"
+#define LOADAVG_FILE "/proc/loadavg"
 
 static bool status_check(void)
 {
@@ -134,6 +135,8 @@ int main(int argc, char *argv[])
     read_attr = true;
     end_attr = false;
 
+    char loadavg_buf[64];
+
     while (!end_attr) {
         FD_ZERO(&readset);
         FD_SET(STDIN_FILENO, &readset);
@@ -159,9 +162,27 @@ int main(int argc, char *argv[])
             printf("\n\nCurrent time: %04d-%02d-%02d %02d:%02d:%02d\n",
                    tm_now->tm_year + 1900, tm_now->tm_mon + 1, tm_now->tm_mday,
                    tm_now->tm_hour, tm_now->tm_min, tm_now->tm_sec);
+
+            int loadavg_fd = open(LOADAVG_FILE, O_RDONLY);
+            if (loadavg_fd < 0) {
+                perror("Failed to open loadavg");
+                goto out;
+            }
+
+            int loadavg_len =
+                read(loadavg_fd, loadavg_buf, sizeof(loadavg_buf) - 1);
+            if (loadavg_len < 0) {
+                perror("read loadavg failed.");
+                close(loadavg_fd);
+                goto out;
+            }
+            loadavg_buf[loadavg_len] = '\0';
+            printf("System load average: %s", loadavg_buf);
+            close(loadavg_fd);
         }
     }
 
+out:
     raw_mode_disable();
     fcntl(STDIN_FILENO, F_SETFL, flags);
 
