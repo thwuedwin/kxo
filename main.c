@@ -78,7 +78,7 @@ static int major;
 static struct class *kxo_class;
 static struct cdev kxo_cdev;
 
-static char draw_buffer[DATABUFFER_SIZE];
+static char draw_buffer[DATABUFFER_SIZE + STEPS_DATA_SIZE];
 
 /* Data are stored into a kfifo buffer before passing them to the userspace */
 static DECLARE_KFIFO_PTR(rx_fifo, unsigned char);
@@ -117,41 +117,21 @@ static DEFINE_MUTEX(consumer_lock);
 static struct circ_buf fast_buf;
 
 static char table[N_GRIDS];
+static char steps[N_GRIDS];
+int step;
 
 /* Draw the board into draw_buffer */
 static int draw_board(char *table)
 {
-    // for BOARD_SIZE = 4
-    for (int i = 0; i < sizeof(draw_buffer); i++) {
-        draw_buffer[i] = 0;
+    for (int i = 0; i < N_GRIDS; i++) {
+        draw_buffer[i] = table[i];
     }
 
-    int shift = 0, buffer_i = 0;
-    for (int i = 0; i < N_GRIDS; i++) {
-        int pattern;
-        switch (table[i]) {
-        case ' ':
-            pattern = 0b00;
-            break;
-        case 'O':
-            pattern = 0b01;
-            break;
-        case 'X':
-            pattern = 0b10;
-            break;
-        default:
-            pattern = 0b11;
-        }
-        pattern <<= shift;
-        draw_buffer[buffer_i] |= pattern;
-        smp_wmb();
-        if (shift != 6) {
-            shift += 2;
-        } else {
-            shift = 0;
-            buffer_i++;
-        }
+    draw_buffer[DATABUFFER_SIZE] = step;
+    for (int i = 0; i < step; i++) {
+        draw_buffer[DATABUFFER_SIZE + 1 + i] = steps[i];
     }
+
     return 0;
 }
 
@@ -220,9 +200,13 @@ static void ai_one_work_func(struct work_struct *w)
 
     smp_mb();
 
-    if (move != -1)
+    int local_step = READ_ONCE(step);
+    if (move != -1) {
         WRITE_ONCE(table[move], 'O');
+        WRITE_ONCE(steps[step], move);
+    }
 
+    WRITE_ONCE(step, local_step + 1);
     WRITE_ONCE(turn, 'X');
     WRITE_ONCE(finish, 1);
     smp_wmb();
@@ -254,9 +238,13 @@ static void ai_two_work_func(struct work_struct *w)
 
     smp_mb();
 
-    if (move != -1)
+    int local_step = READ_ONCE(step);
+    if (move != -1) {
         WRITE_ONCE(table[move], 'X');
+        WRITE_ONCE(steps[local_step], move);
+    }
 
+    WRITE_ONCE(step, local_step + 1);
     WRITE_ONCE(turn, 'O');
     WRITE_ONCE(finish, 1);
     smp_wmb();
@@ -377,6 +365,8 @@ static void timer_handler(struct timer_list *__timer)
 
         read_unlock(&attr_obj.lock);
 
+        step = 0;
+        smp_wmb();
         pr_info("kxo: %c win!!!\n", win);
     }
     tv_end = ktime_get();
@@ -431,6 +421,7 @@ static int kxo_open(struct inode *inode, struct file *filp)
     pr_debug("kxo: %s\n", __func__);
     if (atomic_inc_return(&open_cnt) == 1)
         mod_timer(&timer, jiffies + msecs_to_jiffies(delay));
+    step = 0;
     pr_info("openm current cnt: %d\n", atomic_read(&open_cnt));
 
     return 0;
@@ -527,6 +518,7 @@ static int __init kxo_init(void)
     attr_obj.display = '1';
     attr_obj.resume = '1';
     attr_obj.end = '0';
+    step = 0;
     rwlock_init(&attr_obj.lock);
     /* Setup the timer */
     timer_setup(&timer, timer_handler, 0);

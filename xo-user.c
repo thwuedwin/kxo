@@ -84,49 +84,32 @@ static void listen_keyboard_handler(void)
     close(attr_fd);
 }
 
-static void draw_board(char *display_buf, const char *data_buf)
+static void draw_board(const char *data_buf)
 {
-    int i = 0, k = 0;
-    int data_i = 0, shift = 6;
-    char pattern;
-    display_buf[i++] = '\n';
-    display_buf[i++] = '\n';
-    while (i < DRAWBUFFER_SIZE) {
-        for (int j = 0; j < (BOARD_SIZE << 1) - 1 && k < N_GRIDS; j++) {
-            if (j & 1) {
-                display_buf[i++] = '|';
+    printf("\n\n");
+    for (int i = 0; i < (BOARD_SIZE << 1) - 1; i++) {
+        for (int j = 0; j < (BOARD_SIZE << 1) - 1; j++) {
+            if (i & 1) {
+                printf("-");
                 continue;
             }
-            pattern = (data_buf[data_i] >> shift) & 0b11;
-            if (shift != 0) {
-                shift -= 2;
-            } else {
-                shift = 6;
-                data_i++;
-            }
-            switch (pattern) {
-            case 0b00:
-                display_buf[i++] = ' ';
-                break;
-            case 0b01:
-                display_buf[i++] = 'O';
-                break;
-            case 0b10:
-                display_buf[i++] = 'X';
-                break;
-            default:
-                perror("decode error");
-                exit(1);
-            }
-        }
-        display_buf[i++] = '\n';
 
-        for (int j = 0; j < (BOARD_SIZE << 1) - 1; j++) {
-            display_buf[i++] = '-';
+            printf("%c",
+                   (j & 1) ? '|' : data_buf[(i >> 1) * BOARD_SIZE + (j >> 1)]);
         }
-        display_buf[i++] = '\n';
+        printf("\n");
     }
-    display_buf[DRAWBUFFER_SIZE - 1] = '\0';
+
+    // Only serves for board size = 4
+    int steps = data_buf[DATABUFFER_SIZE];
+    int start = DATABUFFER_SIZE + 1;
+    printf("\nMoves: ");
+    for (int i = 0; i < steps; i++) {
+        printf("%c%c", 'A' + (int) ((data_buf[start + i] >> 2) & 0x3),
+               '0' + (int) ((data_buf[start + i] & 0x3)));
+        if (i != steps - 1)
+            printf(" -> ");
+    }
 }
 
 int main(int argc, char *argv[])
@@ -138,8 +121,7 @@ int main(int argc, char *argv[])
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
 
-    char display_buf[DRAWBUFFER_SIZE];
-    char data_buf[DATABUFFER_SIZE];
+    char data_buf[DATABUFFER_SIZE + STEPS_DATA_SIZE];
 
     fd_set readset;
     int device_fd = open(XO_DEVICE_FILE, O_RDONLY);
@@ -169,9 +151,9 @@ int main(int argc, char *argv[])
         } else if (read_attr && FD_ISSET(device_fd, &readset)) {
             FD_CLR(device_fd, &readset);
             printf("\033[H\033[J"); /* ASCII escape code to clear the screen */
-            read(device_fd, data_buf, DATABUFFER_SIZE);
-            draw_board(display_buf, data_buf);
-            printf("%s", display_buf);
+            read(device_fd, data_buf, DATABUFFER_SIZE + STEPS_DATA_SIZE);
+            draw_board(data_buf);
+
             time_t now = time(NULL);
             const struct tm *tm_now = localtime(&now);
             printf("\n\nCurrent time: %04d-%02d-%02d %02d:%02d:%02d\n",

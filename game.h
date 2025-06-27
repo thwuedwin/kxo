@@ -31,7 +31,8 @@ typedef unsigned fixed_point_t;
 #define DRAWBUFFER_SIZE                                                 \
     ((BOARD_SIZE * (BOARD_SIZE + 1) << 1) + (BOARD_SIZE * BOARD_SIZE) + \
      ((BOARD_SIZE << 1) + 1) + 1)
-#define DATABUFFER_SIZE ((BOARD_SIZE * BOARD_SIZE) * 2 + 7) / 8
+#define DATABUFFER_SIZE N_GRIDS
+#define STEPS_DATA_SIZE (N_GRIDS + 1)
 
 extern const line_t lines[4];
 
