@@ -97,3 +97,12 @@ move_t negamax_predict(char *table, char player)
     }
     return result;
 }
+
+int negamax_wrapper(const char *table, char player)
+{
+    char table_copy[N_GRIDS];
+    for (int i = 0; i < N_GRIDS; i++) {
+        table_copy[i] = table[i];
+    }
+    return negamax_predict(table_copy, player).move;
+}

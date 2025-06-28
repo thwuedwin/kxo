@@ -55,6 +55,52 @@ static void raw_mode_enable(void)
 }
 
 static bool read_attr, end_attr;
+const char *ai_funcs_name[] = {"mcts", "negamax"};
+const char *ai_one_name, *ai_two_name;
+
+static void choose_ai(char *buf)
+{
+    char input;
+    printf("\033[H\033[J");
+    printf(
+        "\n\n"
+        "Choose AI agent for player 1\n"
+        "0: %s\n"
+        "1: %s\n",
+        ai_funcs_name[0], ai_funcs_name[1]);
+choose_ai_one:
+    while (read(STDIN_FILENO, &input, 1) < 0)
+        ;
+    switch (input) {
+    case '0':
+    case '1':
+        buf[6] = input;
+        ai_one_name = ai_funcs_name[input - '0'];
+        break;
+    default:
+        goto choose_ai_one;
+    }
+
+    printf("\033[H\033[J");
+    printf(
+        "\n\n"
+        "Choose AI agent for player 2\n"
+        "0: %s\n"
+        "1: %s\n",
+        ai_funcs_name[0], ai_funcs_name[1]);
+choose_ai_two:
+    while (read(STDIN_FILENO, &input, 1) < 0)
+        ;
+    switch (input) {
+    case '0':
+    case '1':
+        buf[8] = input;
+        ai_two_name = ai_funcs_name[input - '0'];
+        break;
+    default:
+        goto choose_ai_two;
+    }
+}
 
 static void listen_keyboard_handler(void)
 {
@@ -65,20 +111,30 @@ static void listen_keyboard_handler(void)
         char buf[20];
         switch (input) {
         case 16: /* Ctrl-P */
-            read(attr_fd, buf, 6);
+            read(attr_fd, buf, 10);
             buf[0] = (buf[0] - '0') ? '0' : '1';
             read_attr ^= 1;
-            write(attr_fd, buf, 6);
+            write(attr_fd, buf, 10);
             if (!read_attr)
                 printf("\n\nStopping to display the chess board...\n");
             break;
         case 17: /* Ctrl-Q */
-            read(attr_fd, buf, 6);
+            read(attr_fd, buf, 10);
             buf[4] = '1';
             read_attr = false;
             end_attr = true;
-            write(attr_fd, buf, 6);
+            write(attr_fd, buf, 10);
             printf("\n\nStopping the kernel space tic-tac-toe game...\n");
+            break;
+        case 1: /* Ctrl-A */
+            read(attr_fd, buf, 10);
+            /* Stop kernel module while choosing AI */
+            if (buf[0] - '0')
+                write(attr_fd, buf, 10);
+            choose_ai(buf);
+            buf[0] = '1';
+            read_attr = 1;
+            write(attr_fd, buf, 10);
             break;
         }
     }
@@ -137,6 +193,14 @@ int main(int argc, char *argv[])
 
     char loadavg_buf[64];
 
+    int attr_fd = open(XO_DEVICE_ATTR_FILE, O_RDWR);
+    char buf[20];
+    read(attr_fd, buf, 10);
+    ai_one_name = ai_funcs_name[buf[6] - '0'];
+    ai_two_name = ai_funcs_name[buf[8] - '0'];
+    close(attr_fd);
+
+
     while (!end_attr) {
         FD_ZERO(&readset);
         FD_SET(STDIN_FILENO, &readset);
@@ -179,6 +243,9 @@ int main(int argc, char *argv[])
             loadavg_buf[loadavg_len] = '\0';
             printf("System load average: %s", loadavg_buf);
             close(loadavg_fd);
+
+            printf("Player 1 AI: %s\n", ai_one_name);
+            printf("Player 2 AI: %s\n", ai_two_name);
         }
     }
 

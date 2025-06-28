@@ -33,11 +33,17 @@ MODULE_DESCRIPTION("In-kernel Tic-Tac-Toe game engine");
 static int delay = 100; /* time (in ms) to generate an event */
 
 /* Declare kernel module attribute for sysfs */
+typedef int (*ai_func_t)(const char *table, char player);
+static ai_func_t ai_one_func = mcts;
+static ai_func_t ai_two_func = negamax_wrapper;
+static ai_func_t ai_funcs[] = {mcts, negamax_wrapper};
 
 struct kxo_attr {
     char display;
     char resume;
     char end;
+    char ai_one_type;
+    char ai_two_type;
     rwlock_t lock;
 };
 
@@ -48,8 +54,9 @@ static ssize_t kxo_state_show(struct device *dev,
                               char *buf)
 {
     read_lock(&attr_obj.lock);
-    int ret = snprintf(buf, 7, "%c %c %c\n", attr_obj.display, attr_obj.resume,
-                       attr_obj.end);
+    int ret =
+        snprintf(buf, 11, "%c %c %c %c %c\n", attr_obj.display, attr_obj.resume,
+                 attr_obj.end, attr_obj.ai_one_type, attr_obj.ai_two_type);
     read_unlock(&attr_obj.lock);
     return ret;
 }
@@ -60,8 +67,10 @@ static ssize_t kxo_state_store(struct device *dev,
                                size_t count)
 {
     write_lock(&attr_obj.lock);
-    sscanf(buf, "%c %c %c", &(attr_obj.display), &(attr_obj.resume),
-           &(attr_obj.end));
+    sscanf(buf, "%c %c %c %c %c", &(attr_obj.display), &(attr_obj.resume),
+           &(attr_obj.end), &(attr_obj.ai_one_type), &(attr_obj.ai_two_type));
+    ai_one_func = ai_funcs[attr_obj.ai_one_type - '0'];
+    ai_two_func = ai_funcs[attr_obj.ai_two_type - '0'];
     write_unlock(&attr_obj.lock);
     return count;
 }
@@ -196,7 +205,7 @@ static void ai_one_work_func(struct work_struct *w)
     tv_start = ktime_get();
     mutex_lock(&producer_lock);
     int move;
-    WRITE_ONCE(move, mcts(table, 'O'));
+    WRITE_ONCE(move, ai_one_func(table, 'O'));
 
     smp_mb();
 
@@ -234,7 +243,7 @@ static void ai_two_work_func(struct work_struct *w)
     tv_start = ktime_get();
     mutex_lock(&producer_lock);
     int move;
-    WRITE_ONCE(move, negamax_predict(table, 'X').move);
+    WRITE_ONCE(move, ai_two_func(table, 'X'));
 
     smp_mb();
 
@@ -518,6 +527,8 @@ static int __init kxo_init(void)
     attr_obj.display = '1';
     attr_obj.resume = '1';
     attr_obj.end = '0';
+    attr_obj.ai_one_type = '0';
+    attr_obj.ai_two_type = '1';
     step = 0;
     rwlock_init(&attr_obj.lock);
     /* Setup the timer */
