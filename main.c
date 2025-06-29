@@ -268,6 +268,7 @@ static void ai_two_work_func(struct work_struct *w)
 
 /* Workqueue for asynchronous bottom-half processing */
 static struct workqueue_struct *kxo_workqueue;
+static struct workqueue_struct *ai_one_workqueue, *ai_two_workqueue;
 
 /* Work item: holds a pointer to the function that is going to be executed
  * asynchronously.
@@ -299,11 +300,11 @@ static void game_tasklet_func(unsigned long __data)
     if (finish && turn == 'O') {
         WRITE_ONCE(finish, 0);
         smp_wmb();
-        queue_work(kxo_workqueue, &ai_one_work);
+        queue_work(ai_one_workqueue, &ai_one_work);
     } else if (finish && turn == 'X') {
         WRITE_ONCE(finish, 0);
         smp_wmb();
-        queue_work(kxo_workqueue, &ai_two_work);
+        queue_work(ai_two_workqueue, &ai_two_work);
     }
     queue_work(kxo_workqueue, &drawboard_work);
     tv_end = ktime_get();
@@ -513,6 +514,11 @@ static int __init kxo_init(void)
 
     /* Create the workqueue */
     kxo_workqueue = alloc_workqueue("kxod", WQ_UNBOUND, WQ_MAX_ACTIVE);
+    ai_one_workqueue =
+        alloc_workqueue("kxo_ai_oned", WQ_UNBOUND | WQ_SYSFS, WQ_MAX_ACTIVE);
+    ai_two_workqueue =
+        alloc_workqueue("kxo_ai_twod", WQ_UNBOUND | WQ_SYSFS, WQ_MAX_ACTIVE);
+
     if (!kxo_workqueue) {
         ret = -ENOMEM;
         goto error_workqueue;
@@ -560,6 +566,8 @@ static void __exit kxo_exit(void)
     del_timer_sync(&timer);
     tasklet_kill(&game_tasklet);
     flush_workqueue(kxo_workqueue);
+    flush_workqueue(ai_one_workqueue);
+    flush_workqueue(ai_two_workqueue);
     destroy_workqueue(kxo_workqueue);
     vfree(fast_buf.buf);
     device_destroy(kxo_class, dev_id);

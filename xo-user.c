@@ -169,11 +169,45 @@ static void draw_board(const char *data_buf)
     }
 }
 
+static void write_sysfs_attr(const char *path, const char *value)
+{
+    int fd = open(path, O_WRONLY);
+    if (fd < 0) {
+        perror(path);
+        return;
+    }
+
+    ssize_t len = write(fd, value, strlen(value));
+    if (len < 0) {
+        perror("write");
+    }
+
+    close(fd);
+}
+
+void set_wq_attr(void)
+{
+    write_sysfs_attr(
+        "/sys/devices/virtual/workqueue/kxo_ai_oned/affinity_scope", "CPU");
+    write_sysfs_attr(
+        "/sys/devices/virtual/workqueue/kxo_ai_oned/affinity_strict", "1");
+    write_sysfs_attr("/sys/devices/virtual/workqueue/kxo_ai_oned/cpumask",
+                     "00001");
+
+    write_sysfs_attr(
+        "/sys/devices/virtual/workqueue/kxo_ai_twod/affinity_scope", "CPU");
+    write_sysfs_attr(
+        "/sys/devices/virtual/workqueue/kxo_ai_twod/affinity_strict", "1");
+    write_sysfs_attr("/sys/devices/virtual/workqueue/kxo_ai_twod/cpumask",
+                     "00002");
+}
+
 int main(int argc, char *argv[])
 {
     if (!status_check())
         exit(1);
 
+    set_wq_attr();
     raw_mode_enable();
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
@@ -199,7 +233,6 @@ int main(int argc, char *argv[])
     ai_one_name = ai_funcs_name[buf[6] - '0'];
     ai_two_name = ai_funcs_name[buf[8] - '0'];
     close(attr_fd);
-
 
     while (!end_attr) {
         FD_ZERO(&readset);
